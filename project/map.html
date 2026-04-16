@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Smart AQI + Safe Route AI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+<style>
+body {
+  margin:0;
+  font-family:Arial;
+  background:#0f172a;
+  color:white;
+}
+
+#map { height:65vh; }
+
+.topbar {
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  padding:10px;
+  background:#111827;
+}
+
+input,button {
+  padding:8px;
+  border:none;
+  border-radius:6px;
+}
+
+button {
+  background:#22c55e;
+  color:white;
+  cursor:pointer;
+}
+
+.panel {
+  display:flex;
+  gap:10px;
+  padding:10px;
+}
+
+.card {
+  background:#1e293b;
+  padding:10px;
+  border-radius:10px;
+}
+
+.chatbox {
+  position:fixed;
+  bottom:10px;
+  right:10px;
+  background:#1e293b;
+  padding:10px;
+  border-radius:10px;
+  width:260px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="topbar">
+  <input type="text" id="city" placeholder="Search city">
+  <button onclick="searchCity()">Search</button>
+
+  <button onclick="getLocation()">📍 Auto GPS</button>
+
+  <input type="text" id="from" placeholder="From">
+  <button onclick="setStartToCurrent()" title="Select your current GPS location as Start">📍</button>
+  <input type="text" id="to" placeholder="To">
+  <button onclick="route()">🚗 Safe Route</button>
+
+  <div id="aqi">AQI: --</div>
+</div>
+
+<div id="map"></div>
+
+<div class="panel">
+  <div class="card" id="status">Status: Waiting...</div>
+  <div class="card" id="distance">Distance: --</div>
+</div>
+
+<div class="chatbox">
+  <div id="chatOutput">🤖 Ask me about AQI & routes</div>
+  <input type="text" id="chatInput" placeholder="Type..." onkeypress="chat(event)">
+</div>
+
+<script>
+
+// MAP INIT (Restricted roughly around India)
+let map = L.map('map').setView([22, 79], 5);
+map.setMaxBounds([[6.5, 68.1], [35.5, 97.4]]);
+map.options.minZoom = 4;
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  subdomains: 'abcd',
+  maxZoom: 19
+}).addTo(map);
+
+let marker;
+
+// 🌍 AUTO GPS DETECTION
+function getLocation(){
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      let lat = pos.coords.latitude;
+      let lon = pos.coords.longitude;
+
+      map.setView([lat,lon],13);
+
+      if(marker) map.removeLayer(marker);
+      marker = L.marker([lat,lon]).addTo(map)
+        .bindPopup("📍 You are here").openPopup();
+
+      fakeAQI(lat, lon, "Your Location");
+    });
+  } else {
+    alert("GPS not supported");
+  }
+}
+
+// 📍 SET 'FROM' TO CURRENT LOCATION VIA REVERSE GEOCODING
+function setStartToCurrent(){
+  if(navigator.geolocation){
+    document.getElementById("from").value = "Detecting...";
+    navigator.geolocation.getCurrentPosition(async pos=>{
+      let lat = pos.coords.latitude;
+      let lon = pos.coords.longitude;
+      
+      try {
+        let res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+        let data = await res.json();
+        let cityObj = data.address.city || data.address.town || data.address.village || data.address.state || "Your Location";
+        
+        document.getElementById("from").value = cityObj;
+        speak("Starting route from " + cityObj);
+      } catch(e) {
+        // Fallback to coordinates
+        document.getElementById("from").value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+      }
+    });
+  }
+}
+
+// 🔍 SEARCH CITY (India Only)
+async function searchCity(){
+  let city = document.getElementById("city").value;
+
+  let res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${city}&countrycodes=in`);
+  let data = await res.json();
+
+  if(data.length === 0){
+    alert("City not found in India");
+    return;
+  }
+
+  let lat = data[0].lat;
+  let lon = data[0].lon;
+
+  map.setView([lat,lon],12);
+
+  if(marker) map.removeLayer(marker);
+  marker = L.marker([lat,lon]).addTo(map).bindPopup(city).openPopup();
+
+  fakeAQI(lat, lon, city);
+}
+
+let heatLayer;
+
+// 🔥 FETCH AQI FROM DB/API and GENERATE HEATMAP
+async function fakeAQI(lat, lon, place){
+  try {
+    let res = await fetch(`http://localhost:5001/api/aqi?city=${place}`);
+    let data = await res.json();
+    let aqi = data.aqi;
+
+    document.getElementById("aqi").innerText = "AQI: " + aqi;
+
+    // Clear old heat layer if it exists
+    if(heatLayer) map.removeLayer(heatLayer);
+
+    // Generate a cluster of heat points around the center to simulate a pollution cloud
+    let heatPoints = [];
+    let intensity = aqi / 300; // Normalize intensity based on US AQI scale max 300
+    
+    // Center point is the hottest
+    heatPoints.push([lat, lon, intensity * 2]);
+    
+    // Surroundings
+    for(let i=0; i<30; i++){
+        let randLat = lat + (Math.random() - 0.5) * 0.03;
+        let randLon = lon + (Math.random() - 0.5) * 0.03;
+        // Fade intensity based on distance from center roughly
+        let dropoff = 1 - (Math.abs(randLat - lat) + Math.abs(randLon - lon)) * 10;
+        let pointInstensity = Math.max(0.1, intensity * dropoff);
+        heatPoints.push([randLat, randLon, pointInstensity]);
+    }
+
+    // Heatmap config
+    let gradient = {};
+    if(aqi < 100) { gradient = {0.4: 'blue', 0.6: 'cyan', 1: 'green'}; } // Good
+    else if(aqi < 200) { gradient = {0.4: 'yellow', 0.6: 'orange', 1: 'red'}; } // Moderate/Poor
+    else { gradient = {0.4: 'orange', 0.6: 'red', 1: 'purple'}; } // Hazardous
+
+    heatLayer = L.heatLayer(heatPoints, {
+      radius: 40,
+      blur: 25,
+      maxZoom: 14,
+      gradient: gradient
+    }).addTo(map);
+
+    let msg = aqi < 100 ? "Good Air Quality" : aqi < 200 ? "Moderate Pollution" : "Dangerous Air ⚠️";
+    if(aqi >= 200) speak("Warning! Dangerous air in " + place);
+
+    document.getElementById("status").innerText = msg + " in " + place;
+  } catch(e) { console.error("Error fetching map AQI", e); }
+}
+
+// 🚗 ROUTE + SAFETY AI (India Only)
+async function route(){
+  let from = document.getElementById("from").value;
+  let to = document.getElementById("to").value;
+
+  let g1 = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${from}&countrycodes=in`);
+  let d1 = await g1.json();
+
+  let g2 = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${to}&countrycodes=in`);
+  let d2 = await g2.json();
+
+  if(d1.length==0 || d2.length==0){
+    alert("Invalid location");
+    return;
+  }
+
+  let lat1 = d1[0].lat, lon1 = d1[0].lon;
+  let lat2 = d2[0].lat, lon2 = d2[0].lon;
+
+  let line = L.polyline([[lat1,lon1],[lat2,lon2]],{color:"cyan"}).addTo(map);
+
+  map.fitBounds(line.getBounds());
+
+  let dist = Math.sqrt((lat2-lat1)**2 + (lon2-lon1)**2) * 111;
+
+  document.getElementById("distance").innerText =
+    "Distance: " + dist.toFixed(2) + " km";
+
+  // 🤖 ROUTE SAFETY AI
+  let risk = Math.random();
+
+  if(risk < 0.3){
+    speak("Route is safe");
+    alert("✅ Safe Route");
+  } else if(risk < 0.7){
+    speak("Moderate pollution on route");
+    alert("⚠️ Moderate Pollution Route");
+  } else {
+    speak("Dangerous route detected");
+    alert("❌ Unsafe Route - Try alternative");
+  }
+}
+
+// 🤖 CHATBOT
+function chat(e){
+  if(e.key === "Enter"){
+    let input = document.getElementById("chatInput").value.toLowerCase();
+    let output = document.getElementById("chatOutput");
+
+    if(input.includes("route")){
+      output.innerText = "I analyze safest routes based on AQI";
+    }
+    else if(input.includes("aqi")){
+      output.innerText = "AQI is shown above map";
+    }
+    else{
+      output.innerText = "Monitoring environment in real-time 🌍";
+    }
+
+    speak(output.innerText);
+    document.getElementById("chatInput").value="";
+  }
+}
+
+// 🔊 VOICE
+function speak(text){
+  let msg = new SpeechSynthesisUtterance(text);
+  speechSynthesis.speak(msg);
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Advanced Settings</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  background:#0f172a;
+  color:white;
+  font-family:Arial;
+  padding:20px;
+}
+
+.card {
+  background:#1e293b;
+  padding:15px;
+  border-radius:10px;
+  margin-bottom:10px;
+}
+
+button {
+  padding:10px;
+  background:#22c55e;
+  border:none;
+  color:white;
+  border-radius:6px;
+  margin-top:5px;
+  cursor:pointer;
+}
+
+button:disabled {
+  opacity:0.6;
+  cursor:not-allowed;
+}
+
+.success {
+  background:#16a34a !important;
+}
+
+.danger {
+  background:#dc2626 !important;
+}
+</style>
+</head>
+
+<body>
+
+<h2>⚙️ Advanced Settings</h2>
+
+<div class="card">👤 Name: <input type="text" id="name"></div>
+
+<div class="card">
+🌙 Theme:
+<select id="theme">
+  <option value="dark">Dark</option>
+  <option value="light">Light</option>
+</select>
+</div>
+
+<div class="card">📍 Default City: <input type="text" id="city"></div>
+
+<div class="card">
+🔊 Voice:
+<select id="voice">
+  <option value="on">ON</option>
+  <option value="off">OFF</option>
+</select>
+</div>
+
+<div class="card">
+🚗 Route:
+<select id="route">
+  <option value="safe">Safe</option>
+  <option value="fast">Fast</option>
+</select>
+</div>
+
+<div class="card">
+📏 Units:
+<select id="unit">
+  <option value="km">KM</option>
+  <option value="miles">Miles</option>
+</select>
+</div>
+
+<div class="card">
+⚠️ AQI Alert: <input type="number" id="alert" placeholder="150">
+</div>
+
+<div class="card">
+📡 Notifications:
+<select id="notify">
+  <option value="on">ON</option>
+  <option value="off">OFF</option>
+</select>
+</div>
+
+<div class="card">
+📍 Auto GPS:
+<select id="gps">
+  <option value="on">ON</option>
+  <option value="off">OFF</option>
+</select>
+</div>
+
+<button id="saveBtn" onclick="saveSettings()">💾 Save</button>
+<button id="resetBtn" onclick="resetSettings()">♻ Reset</button>
+<button onclick="exportSettings()">⬇ Export</button>
+<input type="file" onchange="importSettings(event)">
+
+<script>
+
+// LOAD SETTINGS
+async function loadSettings() {
+  try {
+    let res = await fetch("http://localhost:5001/api/settings");
+    if(res.ok) {
+      let s = await res.json();
+      document.getElementById("theme").value = s.theme || "dark";
+      document.getElementById("city").value = s.defaultCity || "";
+      document.getElementById("voice").value = s.voice ? "on" : "off";
+      document.getElementById("route").value = s.routePreference || "safe";
+      document.getElementById("alert").value = s.alertThreshold || 150;
+      
+      if(s.theme === "light"){
+        document.body.style.background = "white";
+        document.body.style.color = "black";
+      } else {
+        document.body.style.background = "#0f172a";
+        document.body.style.color = "white";
+      }
+    }
+  } catch(e) {
+    console.error("Failed to load settings", e);
+  }
+}
+loadSettings();
+
+// SAVE
+async function saveSettings(){
+
+  let btn = document.getElementById("saveBtn");
+  btn.innerText = "Saving...";
+  btn.disabled = true;
+
+  let settings = {
+    theme: document.getElementById("theme").value,
+    defaultCity: document.getElementById("city").value,
+    voice: document.getElementById("voice").value === "on",
+    routePreference: document.getElementById("route").value,
+    alertThreshold: document.getElementById("alert").value
+  };
+
+  try {
+    await fetch("http://localhost:5001/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings)
+    });
+
+    // APPLY THEME INSTANTLY
+    if(settings.theme === "light"){
+      document.body.style.background = "white";
+      document.body.style.color = "black";
+    } else {
+      document.body.style.background = "#0f172a";
+      document.body.style.color = "white";
+    }
+
+    setTimeout(()=>{
+      btn.innerText = "✅ Saved";
+      btn.classList.add("success");
+
+      setTimeout(()=>{
+        btn.innerText = "💾 Save";
+        btn.disabled = false;
+        btn.classList.remove("success");
+      },1500);
+
+    },800);
+  } catch (e) {
+    console.error(e);
+    btn.disabled = false;
+    btn.innerText = "Save Failed";
+  }
+}
+
+// RESET
+function resetSettings(){
+
+  let btn = document.getElementById("resetBtn");
+
+  if(!confirm("Reset all settings?")) return;
+
+  btn.innerText = "Resetting...";
+  btn.disabled = true;
+
+  localStorage.removeItem("aqiSettings");
+
+  setTimeout(()=>{
+    btn.innerText = "✅ Reset Done";
+    btn.classList.add("danger");
+
+    setTimeout(()=>{
+      location.reload();
+    },1200);
+
+  },800);
+}
+
+// EXPORT
+function exportSettings(){
+  let data = localStorage.getItem("aqiSettings");
+  let blob = new Blob([data], {type:"application/json"});
+  let link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "settings.json";
+  link.click();
+}
+
+// IMPORT
+function importSettings(event){
+  let file = event.target.files[0];
+  let reader = new FileReader();
+
+  reader.onload = function(){
+    localStorage.setItem("aqiSettings", reader.result);
+    alert("Imported Successfully!");
+    location.reload();
+  };
+
+  reader.readAsText(file);
+}
+
+</script>
+
+</body>
+</html>

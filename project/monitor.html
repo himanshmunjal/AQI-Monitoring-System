@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>📡 Live Monitoring - Smart AQI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Outfit',sans-serif; }
+
+body {
+  background: transparent;
+  color: #e2e8f0;
+  padding: 20px;
+}
+
+h2 {
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  background: linear-gradient(135deg, #38bdf8, #818cf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+p.sub { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
+
+.search-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.search-row input {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.05);
+  color: #e2e8f0;
+  font-size: 15px;
+  font-family: 'Outfit', sans-serif;
+  outline: none;
+  transition: border-color 0.3s;
+}
+.search-row input:focus { border-color: #38bdf8; }
+
+.search-row button {
+  padding: 12px 22px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+  color: white;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: filter 0.2s, transform 0.2s;
+}
+.search-row button:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  transition: transform 0.3s;
+}
+.stat-card:hover { transform: translateY(-4px); }
+
+.stat-card .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+.stat-card .value { font-size: 32px; font-weight: 800; }
+.stat-card .unit  { font-size: 13px; color: #94a3b8; }
+
+#aqiBadge {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  background: rgba(52,211,153,0.15);
+  color: #34d399;
+  border: 1px solid rgba(52,211,153,0.3);
+}
+
+.chart-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.chart-card h3 { font-size: 14px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+
+.health-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.hcard {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 18px;
+}
+.hcard .icon { font-size: 26px; margin-bottom: 8px; }
+.hcard .title { font-size: 13px; color: #94a3b8; margin-bottom: 4px; }
+.hcard .desc { font-size: 14px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h2>📡 Live AQI Monitoring</h2>
+<p class="sub">Search any city to see real-time conditions and live trend history</p>
+
+<div class="search-row">
+  <input type="text" id="cityInput" placeholder="Enter city (e.g. Delhi, Mumbai, Bangalore...)" onkeypress="if(event.key==='Enter') getAQI()">
+  <button onclick="getAQI()">🔍 Monitor</button>
+  <button onclick="useGPS()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1);">📍 My Location</button>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="label">Air Quality Index</div>
+    <div class="value" id="aqiVal" style="color:#38bdf8">--</div>
+    <div id="aqiBadge">Waiting...</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">🌡 Temperature</div>
+    <div class="value" id="tempVal">--</div>
+    <div class="unit">°C</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">💧 Humidity</div>
+    <div class="value" id="humVal">--</div>
+    <div class="unit">%</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">📍 Location</div>
+    <div class="value" style="font-size:16px; margin-top:8px;" id="locVal">--</div>
+  </div>
+</div>
+
+<!-- Trend Chart -->
+<div class="chart-card">
+  <h3>📈 AQI Trend (last 10 readings)</h3>
+  <div style="position:relative; height:220px;">
+    <canvas id="trendChart"></canvas>
+  </div>
+</div>
+
+<!-- Health Cards -->
+<div class="health-cards">
+  <div class="hcard">
+    <div class="icon">🏃</div>
+    <div class="title">Outdoor Exercise</div>
+    <div class="desc" id="hExercise">Search a city first</div>
+  </div>
+  <div class="hcard">
+    <div class="icon">😷</div>
+    <div class="title">Mask Advice</div>
+    <div class="desc" id="hMask">Search a city first</div>
+  </div>
+  <div class="hcard">
+    <div class="icon">🏠</div>
+    <div class="title">Ventilation</div>
+    <div class="desc" id="hVent">Search a city first</div>
+  </div>
+  <div class="hcard">
+    <div class="icon">⚠️</div>
+    <div class="title">Sensitive Groups</div>
+    <div class="desc" id="hSensitive">Search a city first</div>
+  </div>
+</div>
+
+<script>
+let trendChart;
+let trendLabels = [];
+let trendData = [];
+
+// Init empty chart
+function initChart() {
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  let gradient = ctx.createLinearGradient(0, 0, 0, 200);
+  gradient.addColorStop(0, 'rgba(56, 189, 248, 0.4)');
+  gradient.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+  trendChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: trendLabels,
+      datasets: [{
+        label: 'AQI',
+        data: trendData,
+        borderColor: '#38bdf8',
+        borderWidth: 2.5,
+        backgroundColor: gradient,
+        fill: true,
+        tension: 0.4,
+        pointBackgroundColor: '#0f172a',
+        pointBorderColor: '#38bdf8',
+        pointBorderWidth: 2,
+        pointRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+      }
+    }
+  });
+}
+
+async function getAQI() {
+  let city = document.getElementById('cityInput').value.trim();
+  if (!city) { alert('Please enter a city name'); return; }
+  fetchAndDisplay(`http://localhost:5001/api/aqi?city=${encodeURIComponent(city)}`, city);
+}
+
+async function useGPS() {
+  if (!navigator.geolocation) { alert('GPS not supported'); return; }
+  document.getElementById('locVal').innerText = 'Detecting...';
+  navigator.geolocation.getCurrentPosition(async pos => {
+    let lat = pos.coords.latitude;
+    let lon = pos.coords.longitude;
+    fetchAndDisplay(`http://localhost:5001/api/aqi?lat=${lat}&lon=${lon}`, `${lat.toFixed(3)}, ${lon.toFixed(3)}`);
+  }, () => alert('Could not get location'));
+}
+
+async function fetchAndDisplay(url, label) {
+  try {
+    let res = await fetch(url);
+    let data = await res.json();
+    let aqi = data.aqi || 50;
+    let temp = data.temperature || 28;
+    let hum  = data.humidity || 60;
+
+    document.getElementById('aqiVal').innerText = aqi;
+    document.getElementById('tempVal').innerText = temp;
+    document.getElementById('humVal').innerText = hum;
+    document.getElementById('locVal').innerText = label;
+
+    // Badge
+    let badge = document.getElementById('aqiBadge');
+    let color, bg, borderColor, statusText;
+    if (aqi <= 50)       { statusText='Excellent 🌿'; color='#34d399'; bg='rgba(52,211,153,0.15)'; borderColor='rgba(52,211,153,0.3)'; }
+    else if (aqi <= 100) { statusText='Good ✅';      color='#a3e635'; bg='rgba(163,230,53,0.15)';  borderColor='rgba(163,230,53,0.3)'; }
+    else if (aqi <= 150) { statusText='Moderate ⚠️'; color='#fbbf24'; bg='rgba(251,191,36,0.15)';  borderColor='rgba(251,191,36,0.3)'; }
+    else if (aqi <= 200) { statusText='Poor 🟠';     color='#fb923c'; bg='rgba(251,146,60,0.15)';  borderColor='rgba(251,146,60,0.3)'; }
+    else                 { statusText='Hazardous ❌'; color='#f87171'; bg='rgba(248,113,113,0.15)'; borderColor='rgba(248,113,113,0.3)'; }
+
+    badge.innerText = statusText;
+    badge.style.color = color;
+    badge.style.background = bg;
+    badge.style.borderColor = borderColor;
+    document.getElementById('aqiVal').style.color = color;
+
+    // Update health cards
+    updateHealthCards(aqi);
+
+    // Update trend chart
+    let time = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    trendLabels.push(time);
+    trendData.push(aqi);
+    if (trendLabels.length > 10) { trendLabels.shift(); trendData.shift(); }
+    trendChart.update();
+
+  } catch(e) {
+    console.error('Monitor fetch error:', e);
+    document.getElementById('locVal').innerText = 'Error fetching data';
+  }
+}
+
+function updateHealthCards(aqi) {
+  let exercise, mask, vent, sensitive;
+  if (aqi <= 50) {
+    exercise  = 'Great conditions for all outdoor activities ✅';
+    mask      = 'No mask required 😊';
+    vent      = 'Open windows — fresh air is great!';
+    sensitive = 'No restrictions — enjoy the outdoors!';
+  } else if (aqi <= 100) {
+    exercise  = 'Acceptable for most outdoor activities';
+    mask      = 'Mask not needed for general public';
+    vent      = 'Ventilation is fine';
+    sensitive = 'Unusually sensitive people should watch for symptoms';
+  } else if (aqi <= 150) {
+    exercise  = 'Reduce prolonged or heavy exertion outdoors';
+    mask      = 'N95 recommended for sensitive groups 😷';
+    vent      = 'Keep windows closed during peak hours';
+    sensitive = 'Children, elderly & asthma patients should limit outdoor time';
+  } else if (aqi <= 200) {
+    exercise  = 'Avoid heavy outdoor exercise ⚠️';
+    mask      = 'N95 mask strongly recommended for all 😷';
+    vent      = 'Keep windows closed, use air purifier if possible';
+    sensitive = 'Sensitive groups should remain indoors as much as possible';
+  } else {
+    exercise  = 'Avoid ALL outdoor physical activity ❌';
+    mask      = 'N95/N99 mask mandatory when going outside 🚨';
+    vent      = 'Do NOT open windows. Air purifier essential.';
+    sensitive = 'All sensitive groups must stay indoors. Seek medical advice if unwell.';
+  }
+  document.getElementById('hExercise').innerText  = exercise;
+  document.getElementById('hMask').innerText      = mask;
+  document.getElementById('hVent').innerText      = vent;
+  document.getElementById('hSensitive').innerText = sensitive;
+}
+
+initChart();
+</script>
+</body>
+</html>

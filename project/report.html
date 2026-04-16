@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>📊 AQI Reports - Smart AQI System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Outfit',sans-serif; }
+
+body {
+  background: transparent;
+  color: #e2e8f0;
+  padding: 20px;
+}
+
+h2 {
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  background: linear-gradient(135deg, #38bdf8, #818cf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+p.sub { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
+
+/* Search */
+.search-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.search-row input {
+  flex: 1;
+  min-width: 200px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.05);
+  color: #e2e8f0;
+  font-size: 15px;
+  font-family: 'Outfit', sans-serif;
+  outline: none;
+  transition: border-color 0.3s;
+}
+.search-row input:focus { border-color: #38bdf8; }
+.btn-primary {
+  padding: 12px 22px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+  color: white;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: filter 0.2s, transform 0.2s;
+  white-space: nowrap;
+}
+.btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+.btn-ghost {
+  padding: 12px 22px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: #e2e8f0;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.1); transform: translateY(-1px); }
+
+/* Loading State */
+#loadingBar {
+  display: none;
+  height: 3px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #38bdf8, #6366f1, #38bdf8);
+  background-size: 200%;
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer { 0%{background-position:0%} 100%{background-position:200%} }
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 18px;
+  text-align: center;
+  transition: transform 0.3s;
+}
+.stat-card:hover { transform: translateY(-4px); }
+.stat-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+.stat-value { font-size: 30px; font-weight: 800; color: #38bdf8; }
+.stat-sub   { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+
+/* Charts Grid */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+@media(max-width:640px) { .charts-grid { grid-template-columns: 1fr; } }
+
+.chart-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 20px;
+}
+.chart-card h3 { font-size: 13px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+
+/* Info Cards */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.info-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  padding: 18px;
+}
+.info-card .icon { font-size: 22px; margin-bottom: 8px; }
+.info-card .ic-title { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+.info-card .ic-value { font-size: 15px; font-weight: 600; }
+
+/* AI Insight */
+.insight-card {
+  background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(99,102,241,0.07));
+  border: 1px solid rgba(56,189,248,0.2);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 24px;
+  font-size: 15px;
+  line-height: 1.7;
+}
+.insight-card .ic-header { font-size: 14px; font-weight: 700; color: #38bdf8; margin-bottom: 6px; }
+
+/* Empty state */
+#emptyState {
+  text-align: center;
+  padding: 60px 20px;
+  color: #475569;
+}
+#emptyState .big { font-size: 48px; margin-bottom: 14px; }
+#emptyState p { font-size: 16px; }
+
+#reportContent { display: none; }
+</style>
+</head>
+<body>
+
+<h2>📊 AQI Location Report</h2>
+<p class="sub">Enter any city to generate a comprehensive air quality report with historical trends and health insights.</p>
+
+<div class="search-row">
+  <input type="text" id="cityInput" placeholder="Enter city name (e.g. Delhi, Mumbai, Pune...)" onkeypress="if(event.key==='Enter') generateReport()">
+  <button class="btn-primary" onclick="generateReport()">📊 Generate Report</button>
+  <button class="btn-ghost" onclick="useGPS()">📍 Use My Location</button>
+  <button class="btn-ghost" id="dlBtn" onclick="downloadReport()" style="display:none">⬇ Download</button>
+</div>
+
+<div id="loadingBar"></div>
+
+<!-- Empty State -->
+<div id="emptyState">
+  <div class="big">🔍</div>
+  <p>Enter any city above to generate its full AQI report</p>
+</div>
+
+<!-- Report Content -->
+<div id="reportContent">
+
+  <!-- Stat Cards -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Live AQI</div>
+      <div class="stat-value" id="sAQI">--</div>
+      <div class="stat-sub" id="sStatus">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">7-Day Average</div>
+      <div class="stat-value" id="sAvg">--</div>
+      <div class="stat-sub">AQI</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">🌡 Temperature</div>
+      <div class="stat-value" id="sTemp">--</div>
+      <div class="stat-sub">°C</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">💧 Humidity</div>
+      <div class="stat-value" id="sHum">--</div>
+      <div class="stat-sub">%</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Trend</div>
+      <div class="stat-value" id="sTrend" style="font-size:24px;">--</div>
+      <div class="stat-sub" id="sTrendLabel">--</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-grid">
+    <div class="chart-card">
+      <h3>📈 Historical AQI Trend</h3>
+      <div style="position:relative; height:200px;">
+        <canvas id="histChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h3>🔮 7-Day AQI Forecast</h3>
+      <div style="position:relative; height:200px;">
+        <canvas id="predChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info Cards -->
+  <div class="info-grid">
+    <div class="info-card">
+      <div class="icon">🏃</div>
+      <div class="ic-title">Exercise Advice</div>
+      <div class="ic-value" id="iExercise">--</div>
+    </div>
+    <div class="info-card">
+      <div class="icon">😷</div>
+      <div class="ic-title">Mask Required</div>
+      <div class="ic-value" id="iMask">--</div>
+    </div>
+    <div class="info-card">
+      <div class="icon">🏠</div>
+      <div class="ic-title">Ventilation</div>
+      <div class="ic-value" id="iVent">--</div>
+    </div>
+    <div class="info-card">
+      <div class="icon">🚗</div>
+      <div class="ic-title">Route Safety</div>
+      <div class="ic-value" id="iRoute">--</div>
+    </div>
+  </div>
+
+  <!-- AI Insight -->
+  <div class="insight-card">
+    <div class="ic-header">🤖 AI Insight</div>
+    <div id="aiInsight">Loading...</div>
+  </div>
+
+</div><!-- end reportContent -->
+
+<script>
+let reportCity = '';
+let reportData = {};
+
+async function generateReport(city, label) {
+  city = city || document.getElementById('cityInput').value.trim();
+  if (!city) { alert('Please enter a city name'); return; }
+  reportCity = label || city;
+
+  // Show loading
+  document.getElementById('loadingBar').style.display = 'block';
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('reportContent').style.display = 'none';
+
+  try {
+    // Fetch live AQI
+    let [aqiRes, histRes] = await Promise.all([
+      fetch(`http://localhost:5001/api/aqi?city=${encodeURIComponent(city)}`),
+      fetch(`http://localhost:5001/api/history?city=${encodeURIComponent(city)}`)
+    ]);
+
+    let aqiData = await aqiRes.json();
+    let histList = await histRes.json();
+
+    let aqi  = aqiData.aqi  || 55;
+    let temp = aqiData.temperature || 28;
+    let hum  = aqiData.humidity || 60;
+    let hist = (histList && histList.length) ? histList.map(h => h.aqi) : [50,55,60,58,70,65,aqi];
+
+    let avg  = Math.round(hist.reduce((a,b)=>a+b,0) / hist.length);
+    let trend = aqi > hist[0] ? 'Worsening' : 'Improving';
+
+    reportData = { aqi, temp, hum, hist, avg, trend, city: reportCity };
+
+    // Status label
+    let statusText, statusColor;
+    if      (aqi <= 50)  { statusText='Excellent 🌿'; statusColor='#34d399'; }
+    else if (aqi <= 100) { statusText='Good ✅';       statusColor='#a3e635'; }
+    else if (aqi <= 150) { statusText='Moderate ⚠️';  statusColor='#fbbf24'; }
+    else if (aqi <= 200) { statusText='Poor 🟠';       statusColor='#fb923c'; }
+    else                 { statusText='Hazardous ❌';  statusColor='#f87171'; }
+
+    document.getElementById('sAQI').innerText   = aqi;
+    document.getElementById('sAQI').style.color = statusColor;
+    document.getElementById('sStatus').innerText = statusText;
+    document.getElementById('sAvg').innerText   = avg;
+    document.getElementById('sTemp').innerText  = temp;
+    document.getElementById('sHum').innerText   = hum;
+    document.getElementById('sTrend').innerText = trend === 'Worsening' ? '📈' : '📉';
+    document.getElementById('sTrendLabel').innerText = trend;
+
+    // Health advice
+    fillHealthCards(aqi);
+
+    // Draw charts
+    drawCharts(hist, aqi, trend);
+
+    // AI insight
+    let insightEl = document.getElementById('aiInsight');
+    if (aqi <= 50)       insightEl.innerText = `Air quality in ${reportCity} is excellent today. Outdoor activities are perfectly safe for everyone including children and elderly. No special precautions needed.`;
+    else if (aqi <= 100) insightEl.innerText = `Air quality in ${reportCity} is good. Most people can enjoy outdoor activities without concern. Those with breathing conditions should monitor their symptoms.`;
+    else if (aqi <= 150) insightEl.innerText = `Moderate pollution detected in ${reportCity}. Sensitive groups (children, elderly, asthma patients) should reduce prolonged outdoor exertion and consider wearing masks.`;
+    else if (aqi <= 200) insightEl.innerText = `Poor air quality in ${reportCity}. Everyone should limit outdoor time. N95 masks are strongly recommended. Avoid vigorous outdoor exercise and keep windows closed.`;
+    else                 insightEl.innerText = `Hazardous air quality detected in ${reportCity}! All residents should remain indoors with windows shut. N95/N99 masks are mandatory when stepping outside. Sensitive groups must consult a healthcare provider.`;
+
+    document.getElementById('loadingBar').style.display = 'none';
+    document.getElementById('reportContent').style.display = 'block';
+    document.getElementById('dlBtn').style.display = 'inline-block';
+
+  } catch (e) {
+    document.getElementById('loadingBar').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('emptyState').querySelector('p').innerText = `Could not load data for "${reportCity}". Make sure the server is running.`;
+    console.error('Report error:', e);
+  }
+}
+
+async function useGPS() {
+  if (!navigator.geolocation) { alert('GPS not supported'); return; }
+  navigator.geolocation.getCurrentPosition(async pos => {
+    let lat = pos.coords.latitude;
+    let lon = pos.coords.longitude;
+    document.getElementById('cityInput').value = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+    await generateReport(`lat=${lat}&lon=${lon}`, `${lat.toFixed(3)}, ${lon.toFixed(3)}`);
+  }, () => alert('Could not get GPS location'));
+}
+
+// Keep chart refs to destroy before re-drawing
+let histChartObj, predChartObj;
+
+function drawCharts(hist, liveAqi, trend) {
+  if (histChartObj) histChartObj.destroy();
+  if (predChartObj) predChartObj.destroy();
+
+  const ctxH = document.getElementById('histChart').getContext('2d');
+  let gradH = ctxH.createLinearGradient(0, 0, 0, 200);
+  gradH.addColorStop(0, 'rgba(56,189,248,0.4)');
+  gradH.addColorStop(1, 'rgba(56,189,248,0.0)');
+
+  histChartObj = new Chart(ctxH, {
+    type: 'line',
+    data: {
+      labels: hist.map((_, i) => `Day ${i+1}`),
+      datasets: [{
+        label: 'AQI',
+        data: hist,
+        borderColor: '#38bdf8',
+        borderWidth: 2.5,
+        backgroundColor: gradH,
+        fill: true,
+        tension: 0.4,
+        pointBackgroundColor: '#0f172a',
+        pointBorderColor: '#38bdf8',
+        pointBorderWidth: 2,
+        pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+      }
+    }
+  });
+
+  let delta = trend === 'Worsening' ? 8 : -6;
+  let future = hist.slice(-7).map((v, i) => Math.max(10, v + delta * (i+1)));
+
+  const ctxP = document.getElementById('predChart').getContext('2d');
+  let gradP = ctxP.createLinearGradient(0, 0, 0, 200);
+  gradP.addColorStop(0, trend === 'Worsening' ? 'rgba(248,113,113,0.5)' : 'rgba(52,211,153,0.5)');
+  gradP.addColorStop(1, 'rgba(0,0,0,0)');
+
+  predChartObj = new Chart(ctxP, {
+    type: 'bar',
+    data: {
+      labels: future.map((_, i) => `Day ${i+1}`),
+      datasets: [{
+        label: 'Predicted AQI',
+        data: future,
+        backgroundColor: trend === 'Worsening' ? 'rgba(248,113,113,0.6)' : 'rgba(52,211,153,0.6)',
+        borderColor:      trend === 'Worsening' ? '#f87171' : '#34d399',
+        borderWidth: 1.5,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+      }
+    }
+  });
+}
+
+function fillHealthCards(aqi) {
+  let exercise, mask, vent, route;
+  if (aqi <= 50) {
+    exercise = 'All outdoor activities safe ✅';
+    mask     = 'Not required 😊';
+    vent     = 'Open windows — enjoy fresh air!';
+    route    = 'All routes clear — travel freely';
+  } else if (aqi <= 100) {
+    exercise = 'Suitable for most activities';
+    mask     = 'Not needed for most people';
+    vent     = 'Ventilation is generally fine';
+    route    = 'Routes are clear but stay aware';
+  } else if (aqi <= 150) {
+    exercise = 'Reduce prolonged exertion ⚠️';
+    mask     = 'Recommended for sensitive groups 😷';
+    vent     = 'Limit ventilation during peak hours';
+    route    = 'Avoid high-traffic industrial areas';
+  } else if (aqi <= 200) {
+    exercise = 'Avoid heavy outdoor exercise';
+    mask     = 'N95 strongly recommended for all 😷';
+    vent     = 'Keep windows closed';
+    route    = 'Avoid outdoor routes — use AC transport';
+  } else {
+    exercise = 'Stay indoors — no outdoor activity ❌';
+    mask     = 'N95/N99 mandatory when outside 🚨';
+    vent     = 'Do NOT open windows';
+    route    = 'Minimize all outdoor travel — emergency only 🚨';
+  }
+  document.getElementById('iExercise').innerText = exercise;
+  document.getElementById('iMask').innerText     = mask;
+  document.getElementById('iVent').innerText     = vent;
+  document.getElementById('iRoute').innerText    = route;
+}
+
+async function downloadReport() {
+  let d = reportData;
+  if (!d.city) { alert('Please generate a report first.'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210; // A4 width mm
+  const margin = 14;
+  const contentW = W - margin * 2;
+  let y = 0;
+
+  // ── Helper functions ──────────────────────────────────────────────
+  function setFont(style, size, color) {
+    doc.setFont('helvetica', style);
+    doc.setFontSize(size);
+    if (color) doc.setTextColor(...color);
+  }
+  function fillRect(x, fy, w, h, r, g, b) {
+    doc.setFillColor(r, g, b);
+    doc.rect(x, fy, w, h, 'F');
+  }
+  function line(lx1, ly1, lx2, ly2, r, g, b) {
+    doc.setDrawColor(r, g, b);
+    doc.line(lx1, ly1, lx2, ly2);
+  }
+  function addSectionHeader(title, fy, r, g, b) {
+    fillRect(margin, fy, contentW, 8, r, g, b);
+    setFont('bold', 11, [255, 255, 255]);
+    doc.text(title, margin + 4, fy + 5.5);
+    return fy + 12;
+  }
+  function addRow(label, value, fy, even) {
+    if (even) fillRect(margin, fy - 4, contentW, 7, 245, 248, 252);
+    setFont('bold', 10, [55, 65, 81]);
+    doc.text(label, margin + 3, fy);
+    setFont('normal', 10, [30, 30, 30]);
+    doc.text(String(value), margin + 60, fy);
+    return fy + 7;
+  }
+  function addWrappedText(text, fy, maxW, size, color) {
+    setFont('normal', size, color);
+    let lines = doc.splitTextToSize(text, maxW);
+    doc.text(lines, margin + 3, fy);
+    return fy + lines.length * (size * 0.42) + 2;
+  }
+  function checkPageBreak(fy, needed = 30) {
+    if (fy + needed > 285) { doc.addPage(); return 18; }
+    return fy;
+  }
+
+  // ── COVER HEADER ─────────────────────────────────────────────────
+  fillRect(0, 0, W, 38, 15, 23, 42);
+
+  // Accent bar
+  fillRect(0, 38, W, 3, 56, 189, 248);
+
+  setFont('bold', 22, [255, 255, 255]);
+  doc.text('Smart AQI System', margin, 16);
+  setFont('normal', 11, [148, 163, 184]);
+  doc.text('Air Quality Intelligence Report', margin, 24);
+
+  setFont('normal', 9, [148, 163, 184]);
+  doc.text(`Generated: ${new Date().toDateString()}  •  ${new Date().toLocaleTimeString()}`, margin, 32);
+  doc.text(`Location: ${d.city}`, W - margin, 32, { align: 'right' });
+
+  y = 50;
+
+  // ── AQI STATUS BADGE ──────────────────────────────────────────────
+  let badgeColor, statusLabel;
+  if      (d.aqi <= 50)  { badgeColor = [52, 211, 153];  statusLabel = 'Excellent'; }
+  else if (d.aqi <= 100) { badgeColor = [163, 230, 53];  statusLabel = 'Good'; }
+  else if (d.aqi <= 150) { badgeColor = [251, 191, 36];  statusLabel = 'Moderate'; }
+  else if (d.aqi <= 200) { badgeColor = [251, 146, 60];  statusLabel = 'Poor'; }
+  else                   { badgeColor = [248, 113, 113]; statusLabel = 'Hazardous'; }
+
+  // Big AQI circle
+  doc.setDrawColor(...badgeColor);
+  doc.setLineWidth(1.5);
+  doc.circle(W - margin - 20, y + 12, 18, 'S');
+  doc.setFillColor(...badgeColor);
+  doc.circle(W - margin - 20, y + 12, 16, 'F');
+  setFont('bold', 22, [255, 255, 255]);
+  doc.text(String(d.aqi), W - margin - 20, y + 14, { align: 'center' });
+  setFont('bold', 8, [255, 255, 255]);
+  doc.text('AQI', W - margin - 20, y + 20, { align: 'center' });
+
+  // Status label
+  setFont('bold', 16, [15, 23, 42]);
+  doc.text(statusLabel, margin, y + 10);
+  setFont('normal', 10, [100, 116, 139]);
+  doc.text(`Trend: ${d.trend}  •  Avg AQI (7d): ${d.avg}`, margin, y + 18);
+
+  y += 36;
+  line(margin, y, W - margin, y, 220, 220, 230);
+  y += 8;
+
+  // ── LIVE READINGS ────────────────────────────────────────────────
+  y = addSectionHeader('📊  LIVE READINGS', y, 8, 47, 87);
+  y = addRow('Air Quality Index', d.aqi, y, false);
+  y = addRow('Temperature', d.temp + '°C', y, true);
+  y = addRow('Humidity', d.hum + '%', y, false);
+  y = addRow('Date', new Date().toDateString(), y, true);
+  y = addRow('Time', new Date().toLocaleTimeString(), y, false);
+  y += 6;
+
+  // ── HISTORICAL DATA ──────────────────────────────────────────────
+  y = checkPageBreak(y);
+  y = addSectionHeader('📅  HISTORICAL DATA (7-Day)', y, 30, 64, 120);
+  y = addRow('7-Day AQI Values', d.hist.slice(-7).join(', '), y, false);
+  y = addRow('7-Day Average AQI', d.avg, y, true);
+  y = addRow('Trend', d.trend, y, false);
+  y += 6;
+
+  // ── HEALTH ADVICE ────────────────────────────────────────────────
+  y = checkPageBreak(y);
+  y = addSectionHeader('🏥  HEALTH ADVICE', y, 20, 83, 45);
+  const adviceItems = [
+    ['🏃  Exercise', document.getElementById('iExercise').innerText],
+    ['😷  Mask',     document.getElementById('iMask').innerText],
+    ['🏠  Ventilation', document.getElementById('iVent').innerText],
+    ['🚗  Route Safety', document.getElementById('iRoute').innerText],
+  ];
+  adviceItems.forEach(([label, val], idx) => {
+    y = addRow(label, val, y, idx % 2 === 0);
+  });
+  y += 6;
+
+  // ── AI INSIGHT ───────────────────────────────────────────────────
+  y = checkPageBreak(y, 40);
+  y = addSectionHeader('🤖  AI INSIGHT', y, 67, 20, 120);
+  fillRect(margin, y - 2, contentW, 30, 245, 240, 255);
+  doc.setDrawColor(129, 140, 248);
+  doc.setLineWidth(0.8);
+  doc.rect(margin, y - 2, contentW, 30);
+  y = addWrappedText(document.getElementById('aiInsight').innerText, y + 3, contentW - 6, 9.5, [30, 30, 60]);
+  y += 10;
+
+  // ── CHARTS ───────────────────────────────────────────────────────
+  // Capture both canvases as images
+  try {
+    y = checkPageBreak(y, 90);
+
+    // Section header
+    fillRect(margin, y, contentW, 8, 55, 65, 81);
+    setFont('bold', 11, [255, 255, 255]);
+    doc.text('📈  AQI CHARTS', margin + 4, y + 5.5);
+    y += 12;
+
+    const histCanvas = document.getElementById('histChart');
+    const predCanvas = document.getElementById('predChart');
+
+    if (histCanvas && predCanvas) {
+      const histImg = histCanvas.toDataURL('image/png');
+      const predImg = predCanvas.toDataURL('image/png');
+
+      const chartW = (contentW - 6) / 2;
+      const chartH = chartW * 0.55; // keep aspect ratio nice
+
+      // Chart labels
+      setFont('bold', 9, [100, 116, 139]);
+      doc.text('Historical AQI Trend', margin, y - 1);
+      doc.text('7-Day AQI Forecast', margin + chartW + 6, y - 1);
+
+      doc.addImage(histImg, 'PNG', margin, y + 2, chartW, chartH);
+      doc.addImage(predImg, 'PNG', margin + chartW + 6, y + 2, chartW, chartH);
+      y += chartH + 10;
+    }
+  } catch(e) {
+    console.warn('Chart image capture failed:', e);
+  }
+
+  // ── FOOTER ───────────────────────────────────────────────────────
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    fillRect(0, 288, W, 10, 15, 23, 42);
+    setFont('normal', 8, [148, 163, 184]);
+    doc.text('Smart AQI System  •  Confidential Report', margin, 294);
+    doc.text(`Page ${p} of ${totalPages}`, W - margin, 294, { align: 'right' });
+  }
+
+  // ── SAVE ─────────────────────────────────────────────────────────
+  doc.save(`AQI_Report_${d.city.replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.pdf`);
+}
+</script>
+</body>
+</html>

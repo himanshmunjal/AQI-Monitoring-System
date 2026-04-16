@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Advanced AQI Analytics</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI';}
+
+body{
+  background:linear-gradient(135deg,#020617,#0f172a,#1e293b);
+  color:white;
+  padding:20px;
+}
+
+/* HEADER */
+.header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
+
+button{
+  padding:10px 14px;
+  border:none;
+  border-radius:10px;
+  cursor:pointer;
+  background:linear-gradient(45deg,#38bdf8,#0ea5e9);
+  color:white;
+  font-weight:bold;
+  transition:0.3s;
+}
+button:hover{transform:scale(1.05);}
+
+/* GRID */
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:20px;
+}
+
+/* CARD */
+.card{
+  background:rgba(255,255,255,0.06);
+  padding:20px;
+  border-radius:20px;
+  backdrop-filter:blur(15px);
+  box-shadow:0 10px 30px rgba(0,0,0,0.5);
+  transition:0.3s;
+}
+.card:hover{transform:translateY(-5px);}
+
+/* VALUE */
+.value{
+  font-size:38px;
+  font-weight:bold;
+}
+
+/* AQI STATUS */
+.status{
+  font-size:14px;
+  padding:5px 10px;
+  border-radius:20px;
+  display:inline-block;
+  margin-top:5px;
+}
+
+/* LOCATION */
+.location{
+  margin-bottom:15px;
+}
+
+/* ANIMATION */
+.fade{
+  animation:fadeIn 1s;
+}
+@keyframes fadeIn{
+  from{opacity:0; transform:translateY(10px);}
+  to{opacity:1;}
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+  <h2>🌍 Smart AQI Analytics</h2>
+  <button onclick="goBack()">⬅ Dashboard</button>
+</div>
+
+<div class="card location fade">
+  📍 Location: <span id="location">Fetching...</span>
+</div>
+
+<div class="grid">
+
+  <div class="card fade">
+    <h3>Air Quality Index</h3>
+    <div class="value" id="aqi">--</div>
+    <div id="status" class="status">--</div>
+  </div>
+
+  <div class="card fade">
+    <h3>Temperature</h3>
+    <div class="value" id="temp">--</div>
+  </div>
+
+  <div class="card fade">
+    <h3>Humidity</h3>
+    <div class="value" id="humidity">--</div>
+  </div>
+
+  <div class="card fade">
+    <div style="height:200px;position:relative;">
+      <canvas id="aqiChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card fade">
+    <div style="height:200px;position:relative;">
+      <canvas id="tempChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card fade">
+    <div style="height:200px;position:relative;">
+      <canvas id="humidityChart"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<script>
+
+// 🔊 SOUND ALERT
+let alertSound = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
+
+// 🤖 SPEAK FUNCTION
+function speak(msg){
+  let speech = new SpeechSynthesisUtterance(msg);
+  speech.rate = 1;
+  speech.pitch = 1;
+  speech.volume = 1;
+  speechSynthesis.speak(speech);
+}
+
+// LOCATION
+navigator.geolocation.getCurrentPosition(pos=>{
+  document.getElementById("location").innerText =
+    "Lat: "+pos.coords.latitude.toFixed(2)+" , Lon: "+pos.coords.longitude.toFixed(2);
+
+  speak("Location detected successfully");
+});
+
+// No random data generator needed anymore
+
+// ARRAYS
+let labels=[], aqiData=[], tempData=[], humData=[];
+
+let commonOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    zoom: {
+      zoom: {
+        wheel: { enabled: true },
+        pinch: { enabled: true },
+        mode: 'x',
+      },
+      pan: { enabled: true, mode: 'x' }
+    }
+  }
+};
+
+// CHARTS
+let aqiChart=new Chart(document.getElementById("aqiChart"),{
+  type:"line", data:{labels:labels,datasets:[{label:"AQI",data:aqiData}]}, options: commonOptions
+});
+
+let tempChart=new Chart(document.getElementById("tempChart"),{
+  type:"line", data:{labels:labels,datasets:[{label:"Temp",data:tempData,borderColor:"orange"}]}, options: commonOptions
+});
+
+let humidityChart=new Chart(document.getElementById("humidityChart"),{
+  type:"line", data:{labels:labels,datasets:[{label:"Humidity",data:humData,borderColor:"cyan"}]}, options: commonOptions
+});
+
+// AQI STATUS FUNCTION
+function getAQIStatus(aqi){
+  let status=document.getElementById("status");
+  if(aqi<=50){ status.innerText="Good"; status.style.background="green"; }
+  else if(aqi<=100){ status.innerText="Moderate"; status.style.background="orange"; }
+  else{
+    status.innerText="Poor"; status.style.background="red";
+    // avoid playing sound every second during fast polling
+  }
+}
+
+// INITIAL HISTORICAL LOAD (14 Days Date-Wise)
+async function loadHistorical(lat, lon) {
+  try {
+    if (!lat || !lon) { 
+      lat = 28.6139; lon = 77.2090; // Default New Delhi 
+    }
+    
+    // Fetch realtime live data from OWN backend for accurate top widgets
+    // and historical charts from open-meteo external API
+    let [liveRes, aqiRes, weatherRes] = await Promise.all([
+      fetch(`http://localhost:5001/api/aqi?lat=${lat}&lon=${lon}`),
+      fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=us_aqi&past_days=14&forecast_days=1`),
+      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,relative_humidity_2m_max&past_days=14&forecast_days=1`)
+    ]);
+    
+    // ── LIVE widgets from own backend (always current) ──
+    if (liveRes.ok) {
+      let live = await liveRes.json();
+      document.getElementById("aqi").innerText = live.aqi ?? '--';
+      document.getElementById("temp").innerText = (live.temperature ?? '--') + "°C";
+      document.getElementById("humidity").innerText = (live.humidity ?? '--') + "%";
+      getAQIStatus(live.aqi || 0);
+    }
+
+    // ── CHARTS from open-meteo historical API ──
+    let aqiApi = await aqiRes.json();
+    let weatherApi = await weatherRes.json();
+    
+    let times = weatherApi.daily?.time;
+    if (!times) return;
+    let limit = times.length;
+
+    labels.length = 0; aqiData.length = 0; tempData.length = 0; humData.length = 0;
+
+    // open-meteo hourly AQI array starts at midnight of (today - 14 days).
+    // We need to find the index offset of the first daily entry in the hourly array.
+    let hourlyTimes = aqiApi.hourly?.time || [];
+    let dailyStartIndex = 0;
+    if (hourlyTimes.length > 0 && times.length > 0) {
+      let firstDailyDate = times[0]; // e.g. "2026-03-27"
+      dailyStartIndex = hourlyTimes.findIndex(t => t.startsWith(firstDailyDate));
+      if (dailyStartIndex < 0) dailyStartIndex = 0;
+    }
+
+    for(let i=0; i<limit; i++) {
+       let t = new Date(times[i]).toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+       labels.push(t);
+       
+       // Pick max AQI for this day using the correctly aligned offset
+       let dayMaxAqi = 50;
+       if(aqiApi.hourly?.us_aqi) {
+           let startHour = dailyStartIndex + i * 24;
+           let dailyArray = aqiApi.hourly.us_aqi.slice(startHour, startHour + 24).filter(v => v !== null);
+           if(dailyArray.length > 0) dayMaxAqi = Math.max(...dailyArray);
+       }
+
+       aqiData.push(dayMaxAqi);
+       tempData.push(weatherApi.daily.temperature_2m_max[i]);
+       humData.push(weatherApi.daily.relative_humidity_2m_max[i]);
+    }
+    
+    aqiChart.update();
+    tempChart.update();
+    humidityChart.update();
+  } catch(e) { console.error("History fetch failed", e); }
+}
+
+// AUTO UPDATE USING EXACT USER GPS ON LOAD
+navigator.geolocation.getCurrentPosition(
+  pos => loadHistorical(pos.coords.latitude, pos.coords.longitude),
+  err => loadHistorical(null, null) 
+);
+
+// BACK
+function goBack(){
+  window.location.href="dashboard.html";
+}
+
+// START SPEECH
+speak("Welcome to smart air quality analytics dashboard");
+
+</script>
+
+</body>
+</html>

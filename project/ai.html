@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>AI Assistant - Smart AQI System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  margin:0;
+  font-family:Arial;
+  background:#0f172a;
+  color:white;
+}
+
+.header {
+  text-align:center;
+  padding:15px;
+  background:#111827;
+  font-size:20px;
+  font-weight:bold;
+}
+
+.container {
+  padding:10px;
+}
+
+.card {
+  background:#1e293b;
+  padding:15px;
+  border-radius:10px;
+  margin-bottom:10px;
+}
+
+.chatbox {
+  position:fixed;
+  bottom:0;
+  left:0;
+  width:100%;
+  background:#111827;
+  padding:10px 20px;
+  display:flex;
+  gap:10px;
+  box-sizing:border-box;
+}
+
+.chatbox input {
+  flex:1;
+  padding:10px;
+  border:none;
+  border-radius:5px;
+  outline:none;
+}
+
+.chatbox button {
+  padding:10px 20px;
+  border:none;
+  background:#22c55e;
+  color:white;
+  border-radius:5px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+
+#messages {
+  height: calc(100vh - 160px);
+  overflow-y:auto;
+  padding-bottom: 20px;
+}
+
+.msg {
+  margin:5px 0;
+  padding:8px;
+  border-radius:6px;
+}
+
+.user { background:#22c55e; text-align:right; }
+.bot { background:#374151; }
+</style>
+</head>
+
+<body>
+
+<div class="header">🤖 AI Assistant - Smart AQI & Safe Route</div>
+
+<div class="container">
+
+  <div class="card">
+    📊 <b>AI Prediction Engine</b><br>
+    Predicts AQI & suggests safest routes using smart logic.
+  </div>
+
+  <div class="card" id="aiStatus">
+    Status: Waiting for input...
+  </div>
+
+  <div id="messages"></div>
+
+</div>
+
+<div class="chatbox">
+  <input type="text" id="input" placeholder="Ask about AQI, route safety..." onkeypress="send(event)">
+  <button onclick="send()">Send</button>
+</div>
+
+<script>
+
+// 💬 ADD MESSAGE
+function addMessage(text, type){
+  let div = document.createElement("div");
+  div.className = "msg " + type;
+  div.innerText = text;
+  document.getElementById("messages").appendChild(div);
+
+  document.getElementById("messages").scrollTop = 999999;
+}
+
+// 🤖 AI LOGIC (BACKEND API)
+async function aiResponse(input){
+  document.getElementById("aiStatus").innerText = "AI analyzing...";
+  
+  try {
+    let lat = null, lon = null;
+
+    // Always try to get location silently in the background
+    await new Promise(resolve => {
+        navigator.geolocation.getCurrentPosition(pos => {
+            lat = pos.coords.latitude; lon = pos.coords.longitude; resolve();
+        }, () => resolve(), { timeout: 3000 });
+    });
+
+    // If they asked about "my location" with no other travel intent, just show the coords
+    if(input.toLowerCase().includes("my location") && !input.toLowerCase().includes("route") && !input.toLowerCase().includes("to ")) {
+      let msg = lat
+        ? `Your current location is approximately: ${lat.toFixed(4)}, ${lon.toFixed(4)}.`
+        : "I couldn't retrieve your GPS location. Please allow location access and try again.";
+      addMessage(msg, "bot");
+      document.getElementById("aiStatus").innerText = "Status: Waiting for input...";
+      return null; // already added, skip second addMessage
+    }
+    
+    let fetchUrl = "http://localhost:5001/api/aqi?city=Current";
+    if(lat && lon) fetchUrl = `http://localhost:5001/api/aqi?lat=${lat}&lon=${lon}`;
+    
+    let aqiFetch = await fetch(fetchUrl);
+    let aqiData = await aqiFetch.json();
+    let currentAqi = aqiData.aqi || 50;
+
+    // Enrich the query with location context if known
+    let enrichedQuery = input;
+    if(lat && lon) {
+      enrichedQuery = `${input} (User's GPS: ${lat.toFixed(3)}, ${lon.toFixed(3)})`;
+    }
+
+    let res = await fetch("http://localhost:5001/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: enrichedQuery, aqi: currentAqi })
+    });
+    let data = await res.json();
+    
+    document.getElementById("aiStatus").innerText = "Status: Waiting for input...";
+    speak(data.response);
+    return data.response;
+  } catch (e) {
+    document.getElementById("aiStatus").innerText = "Error connecting to AI";
+    console.error(e);
+    return "Sorry, the AI is currently unreachable. Make sure the server is running.";
+  }
+}
+
+// 📍 GPS
+function getLocation(){
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      let lat = pos.coords.latitude;
+      let lon = pos.coords.longitude;
+
+      let msg = "Your location: " + lat.toFixed(3) + ", " + lon.toFixed(3);
+      addMessage(msg, "bot");
+      speak(msg);
+    });
+  }
+}
+
+// 📤 SEND MESSAGE
+async function send(e){
+  if(!e || e.key === "Enter"){
+    let input = document.getElementById("input").value;
+    if(input.trim()==="") return;
+
+    addMessage(input, "user");
+    document.getElementById("input").value="";
+
+    let reply = await aiResponse(input);
+
+    // reply is null when the function already added the message itself (e.g. location display)
+    if(reply !== null && reply !== undefined) {
+      setTimeout(()=>{ addMessage(reply, "bot"); }, 500);
+    }
+  }
+}
+
+// 🔊 VOICE
+function speak(text){
+  let msg = new SpeechSynthesisUtterance(text);
+  speechSynthesis.speak(msg);
+}
+
+
+</script>
+
+</body>
+</html>

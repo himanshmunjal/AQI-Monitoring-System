@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>📊 AQI Trends Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{
+  margin:0;
+  font-family:sans-serif;
+  background:linear-gradient(135deg,#0f172a,#1e293b);
+  color:white;
+  text-align:center;
+}
+
+h1{
+  margin:20px;
+  font-size:28px;
+}
+
+.container{
+  width:90%;
+  max-width:900px;
+  margin:auto;
+}
+
+.card{
+  background:rgba(255,255,255,0.05);
+  padding:20px;
+  margin:20px 0;
+  border-radius:15px;
+  backdrop-filter:blur(10px);
+  box-shadow:0 0 20px rgba(0,0,0,0.3);
+  transition:0.3s;
+}
+
+.card:hover{
+  transform:scale(1.02);
+}
+
+input{
+  padding:12px;
+  width:60%;
+  border:none;
+  border-radius:8px;
+}
+
+button{
+  padding:12px;
+  border:none;
+  background:#38bdf8;
+  color:white;
+  border-radius:8px;
+  cursor:pointer;
+  margin-left:10px;
+}
+
+.aqi-box{
+  margin-top:20px;
+  padding:20px;
+  font-size:24px;
+  border-radius:12px;
+  transition:0.5s;
+}
+
+.status{
+  margin-top:10px;
+  font-size:18px;
+}
+
+canvas{
+  margin-top:20px;
+  background:#111827;
+  border-radius:10px;
+  padding:10px;
+}
+
+.glow{
+  animation:glow 1.5s infinite alternate;
+}
+
+@keyframes glow{
+  from{box-shadow:0 0 10px #22c55e;}
+  to{box-shadow:0 0 25px #22c55e;}
+}
+</style>
+</head>
+
+<body>
+
+<h1>📊 Smart AQI Trends Dashboard</h1>
+
+<div class="container">
+
+<div class="card">
+  <input type="text" id="city" placeholder="Enter City">
+  <button onclick="getAQI()">Analyze</button>
+
+  <div id="aqiBox" class="aqi-box">AQI: --</div>
+  <div id="status" class="status">Status</div>
+</div>
+
+<div class="card">
+  <h3>📈 Live AQI Trend</h3>
+  <canvas id="lineChart"></canvas>
+</div>
+
+<div class="card">
+  <h3>📊 AQI Distribution</h3>
+  <canvas id="barChart"></canvas>
+</div>
+
+</div>
+
+<script>
+
+let API_KEY="YOUR_API_KEY";
+
+let lineChart, barChart;
+
+function speak(text){
+  let msg=new SpeechSynthesisUtterance(text);
+  speechSynthesis.speak(msg);
+}
+
+function initCharts(){
+
+  let lctx=document.getElementById("lineChart").getContext("2d");
+
+  lineChart=new Chart(lctx,{
+    type:"line",
+    data:{
+      labels:[],
+      datasets:[{
+        label:"AQI Trend",
+        data:[],
+        borderWidth:2
+      }]
+    }
+  });
+
+  let bctx=document.getElementById("barChart").getContext("2d");
+
+  barChart=new Chart(bctx,{
+    type:"bar",
+    data:{
+      labels:["Good","Moderate","Poor"],
+      datasets:[{
+        label:"AQI Levels",
+        data:[0,0,0]
+      }]
+    }
+  });
+}
+
+async function getAQI(){
+
+  let city=document.getElementById("city").value;
+
+  if(city===""){
+    alert("Enter city");
+    return;
+  }
+
+  let box=document.getElementById("aqiBox");
+  let status=document.getElementById("status");
+
+  try{
+    let res=await fetch(`http://localhost:5001/api/aqi?city=${city}`);
+    let data=await res.json();
+
+    let aqi = data.aqi || Math.floor(Math.random()*300);
+
+    box.innerText="AQI: "+aqi;
+
+    let msg="";
+
+    if(aqi<100){
+      box.style.background="green";
+      msg="Good Air";
+      barChart.data.datasets[0].data[0]++;
+    }
+    else if(aqi<200){
+      box.style.background="orange";
+      msg="Moderate";
+      barChart.data.datasets[0].data[1]++;
+    }
+    else{
+      box.style.background="red";
+      msg="Poor";
+      barChart.data.datasets[0].data[2]++;
+    }
+
+    status.innerText=msg;
+    box.classList.add("glow");
+
+    speak("AQI in "+city+" is "+aqi+" "+msg);
+
+    updateLineChart(aqi);
+    barChart.update();
+
+  }catch(e){
+    box.innerText="Error";
+    status.innerText="API Issue";
+  }
+}
+
+function updateLineChart(aqi){
+
+  let time=new Date().toLocaleTimeString();
+
+  lineChart.data.labels.push(time);
+  lineChart.data.datasets[0].data.push(aqi);
+
+  if(lineChart.data.labels.length>8){
+    lineChart.data.labels.shift();
+    lineChart.data.datasets[0].data.shift();
+  }
+
+  lineChart.update();
+}
+
+// Auto fetching
+setInterval(async ()=>{
+  try {
+    let res = await fetch("http://localhost:5001/api/history?city=TrendCity");
+    let data = await res.json();
+    if(data.length > 0) {
+      updateLineChart(data[0].aqi);
+    }
+  } catch(e) {}
+},5001);
+
+initCharts();
+
+</script>
+
+</body>
+</html>

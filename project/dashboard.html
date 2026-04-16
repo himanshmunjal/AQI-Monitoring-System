@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart AQI Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+
+<style>
+/* Modern Font */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Outfit', sans-serif;
+}
+
+body {
+  display: flex;
+  background: radial-gradient(circle at 10% 20%, rgb(14, 21, 38) 0%, rgb(4, 7, 13) 90%);
+  color: #e2e8f0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 260px;
+  height: 100vh;
+  padding: 30px 20px;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sidebar h2 {
+  font-size: 24px;
+  font-weight: 800;
+  margin-bottom: 40px;
+  background: linear-gradient(135deg, #38bdf8, #818cf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.menu a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #94a3b8;
+  padding: 14px 18px;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.menu a:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  transform: translateX(6px);
+}
+
+.menu a.active {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(129, 140, 248, 0.2));
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.menu a.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 4px;
+  background: #38bdf8;
+  border-radius: 0 4px 4px 0;
+}
+
+/* MAIN CONTENT */
+.main {
+  flex: 1;
+  padding: 40px;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* Subtle background glow */
+.main::before {
+  content: '';
+  position: absolute;
+  top: -150px;
+  left: 20%;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.1) 0%, transparent 70%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 40px;
+}
+
+.topbar h2 {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  margin-left: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+  border: none;
+  box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.4);
+}
+
+/* DASHBOARD GRID */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 25px;
+  margin-bottom: 25px;
+}
+
+.card {
+  border-radius: 20px;
+  padding: 25px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.card h3 {
+  font-size: 14px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 15px;
+}
+
+/* AQI DISPLAY */
+.aqi-card {
+  grid-column: span 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, rgba(8, 145, 178, 0.1), rgba(49, 46, 129, 0.4));
+  position: relative;
+  overflow: hidden;
+}
+
+.aqi-info h1 {
+  font-size: 80px;
+  font-weight: 800;
+  line-height: 1;
+  background: linear-gradient(180deg, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 40px rgba(56, 189, 248, 0.3);
+}
+
+#status {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+}
+.metric-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+/* CHART CARD */
+.chart-card {
+  grid-column: span 3;
+  height: 350px;
+  padding: 25px;
+}
+
+/* RIGHT PANEL */
+.rightbar {
+  width: 280px;
+  padding: 30px 20px;
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.rightbar h3 {
+  font-size: 18px;
+  margin-bottom: 25px;
+  color: #e2e8f0;
+}
+
+.control {
+  margin-bottom: 20px;
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.control p {
+  font-size: 14px;
+  margin-bottom: 10px;
+  color: #94a3b8;
+}
+
+/* Range input styling */
+input[type=range] {
+  -webkit-appearance: none;
+  width: 100%;
+  background: transparent;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: #38bdf8;
+  cursor: pointer;
+  margin-top: -6px;
+  box-shadow: 0 0 10px #38bdf8;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+}
+
+/* Light Theme overrides */
+body.light {
+  background: #f8fafc;
+  color: #0f172a;
+}
+body.light .glass {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+}
+body.light .sidebar, body.light .rightbar {
+  border-color: rgba(0,0,0,0.05);
+}
+body.light .menu a { color: #64748b; }
+body.light .menu a:hover { background: rgba(0,0,0,0.04); color: #0f172a; }
+body.light .aqi-card { background: linear-gradient(135deg, rgba(56,189,248,0.1), rgba(99,102,241,0.1)); }
+body.light .aqi-info h1 { background: none; -webkit-text-fill-color: #0f172a; color: #0f172a; text-shadow: none; }
+body.light .card h3 { color: #64748b; }
+body.light .metric-value { color: #0f172a; }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+body.light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); }
+</style>
+</head>
+
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar glass">
+  <h2><span style="font-size:28px;">☁️</span> AeroDash</h2>
+
+  <div class="menu">
+    <a class="active" data-page="dashboard">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+      Dashboard
+    </a>
+    <a href="Alerts.html">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+      Alerts
+    </a>
+    <a href="analytics.html">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+      Analytics
+    </a>
+    <a href="trends.html">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+      Trends
+    </a>
+    <a href="monitor.html">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+      Monitoring
+    </a>
+    <a href="map.html">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+      Map View
+    </a>
+    <a href="report.html">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m4 2v-4m4 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+      Reports
+    </a>
+    <a href="ai.html">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+      AI Insights
+    </a>
+    <a href="settings.html">
+      <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+      Settings
+    </a>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div>
+      <h2 id="title">Overview Dashboard</h2>
+      <p style="color: #94a3b8; margin-top: 5px;">📍 <span id="location">Detecting...</span></p>
+    </div>
+    <div>
+      <button class="btn" onclick="toggleTheme()">
+        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+      </button>
+      <button class="btn btn-primary" onclick="refresh()">
+        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 5px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+        Refresh Data
+      </button>
+    </div>
+  </div>
+
+  <div id="dashboardContent" class="dashboard-grid">
+    <!-- AQI Card -->
+    <div class="card glass aqi-card">
+      <div class="aqi-info">
+        <h3>Primary Index</h3>
+        <h1 id="aqiValue">--</h1>
+        <div id="status">Loading...</div>
+      </div>
+      <!-- Decorative icon for AQI -->
+      <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.05)" style="position:absolute; right: -20px; top: -20px; transform: rotate(15deg);">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+      </svg>
+    </div>
+
+    <!-- Weather Cards -->
+    <div style="display:flex; flex-direction:column; gap:25px;">
+      <div class="card glass">
+        <h3>🌡 Temperature</h3>
+        <div class="metric"><span class="metric-value"><span id="temp">--</span>°C</span></div>
+      </div>
+      <div class="card glass">
+        <h3>💧 Humidity</h3>
+        <div class="metric"><span class="metric-value"><span id="humidity">--</span>%</span></div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="card glass chart-card">
+      <h3 style="margin-bottom: 20px; display:flex; justify-content:space-between;">
+        <span>📈 24h AQI Trend</span>
+      </h3>
+      <div style="position:relative; height:260px;">
+        <canvas id="chart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- SPA Application Frame (Hidden by default) -->
+  <iframe id="appFrame" style="display:none; width:100%; height:80vh; border:none; background:transparent;"></iframe>
+</div>
+
+<!-- RIGHT PANEL -->
+<div class="rightbar glass" id="rightPanel">
+  <h3>⚡ Quick Controls</h3>
+
+  <div class="control glass">
+    <p>Simulate AQI Spike</p>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span style="font-size:12px;color:#94a3b8">0</span>
+      <input type="range" min="0" max="300" value="50" id="slider">
+      <span style="font-size:12px;color:#94a3b8">300</span>
+    </div>
+  </div>
+
+  <div class="control glass" style="display:flex; justify-content:space-between; align-items:center;">
+    <p style="margin:0;">Live Updates</p>
+    <label style="position:relative; display:inline-block; width:40px; height:22px;">
+      <input type="checkbox" id="auto" checked style="opacity:0; width:0; height:0;">
+      <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:rgba(255,255,255,0.2); transition:.4s; border-radius:34px;" id="toggleWrap">
+        <span style="position:absolute; content:''; height:16px; width:16px; left:3px; bottom:3px; background-color:white; transition:.4s; border-radius:50%;" id="toggleCircle"></span>
+      </span>
+    </label>
+  </div>
+</div>
+
+<script>
+// SPA ROUTER LOGIC
+async function loadSPA(url, pageName) {
+  document.getElementById("title").innerText = pageName;
+  document.getElementById("dashboardContent").style.display = "none";
+  document.getElementById("rightPanel").style.display = "none";
+  let frame = document.getElementById("appFrame");
+  frame.style.display = "block";
+
+  try {
+    let res = await fetch(url);
+    let html = await res.text();
+    
+    // Inject global styles to make the sub-page seamless
+    let glassStyle = `
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+        * { font-family: 'Outfit', sans-serif !important; }
+        body { background: transparent !important; color: #e2e8f0 !important; margin: 0; padding: 0 20px; }
+        .sidebar { display: none !important; }
+        .header h2 { font-size: 24px; color: #38bdf8; }
+        .header button { display: none !important; } /* Hide back buttons */
+        .card, .alert { 
+          background: rgba(255, 255, 255, 0.04) !important; 
+          backdrop-filter: blur(15px) !important; 
+          border: 1px solid rgba(255, 255, 255, 0.05) !important; 
+          box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3) !important; 
+          border-radius: 20px !important; 
+          padding: 24px !important;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+      </style>
+    `;
+
+    html = html.replace('</head>', glassStyle + '</head>');
+    
+    let frameDoc = frame.contentWindow.document;
+    frameDoc.open();
+    frameDoc.write(html);
+    frameDoc.close();
+  } catch(e) {
+    console.error("Failed to load module: " + url, e);
+  }
+}
+
+// Navigation functionality matching the original
+let links = document.querySelectorAll(".menu a");
+links.forEach(link => {
+  link.onclick = function(e){
+    let href = this.getAttribute("href");
+    
+    links.forEach(l=>l.classList.remove("active"));
+    this.classList.add("active");
+
+    if(!href || href === "#") {
+      // Home dashboard
+      document.getElementById("title").innerText = "Overview Dashboard";
+      document.getElementById("appFrame").style.display = "none";
+      document.getElementById("dashboardContent").style.display = "grid";
+      document.getElementById("rightPanel").style.display = "block";
+      return;
+    }
+    
+    e.preventDefault();
+    loadSPA(href, this.innerText.trim());
+  }
+});
+
+// Toggle Switch UI update
+const autoToggle = document.getElementById('auto');
+const toggleWrap = document.getElementById('toggleWrap');
+const toggleCircle = document.getElementById('toggleCircle');
+
+function updateToggleUI() {
+  if (autoToggle.checked) {
+    toggleWrap.style.backgroundColor = '#38bdf8';
+    toggleCircle.style.transform = 'translateX(18px)';
+  } else {
+    toggleWrap.style.backgroundColor = 'rgba(255,255,255,0.2)';
+    toggleCircle.style.transform = 'translateX(0)';
+  }
+}
+if(autoToggle) autoToggle.addEventListener('change', updateToggleUI);
+if(autoToggle) updateToggleUI(); // init
+
+function toggleTheme() {
+  document.body.classList.toggle('light');
+  if(chart) {
+    let isLight = document.body.classList.contains('light');
+    chart.options.scales.x.ticks.color = isLight ? '#64748b' : '#94a3b8';
+    chart.options.scales.y.ticks.color = isLight ? '#64748b' : '#94a3b8';
+    chart.options.scales.x.grid.color = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+    chart.options.scales.y.grid.color = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+    chart.options.plugins.legend.labels.color = isLight ? '#0f172a' : '#fff';
+    chart.update();
+  }
+}
+
+// DASHBOARD LOGIC
+function loadDashboard(){
+  updateAQI(null, null);
+  initChart(null, null);
+
+  navigator.geolocation.getCurrentPosition(pos => {
+    let lat = pos.coords.latitude;
+    let lon = pos.coords.longitude;
+    document.getElementById("location").innerText = lat.toFixed(4) + ", " + lon.toFixed(4);
+    updateAQI(lat, lon);
+  }, () => {
+    document.getElementById("location").innerText = "Default Location (Demo)";
+  });
+}
+
+// AQI Fetch
+async function updateAQI(lat, lon){
+  try {
+    let url = "http://localhost:5001/api/aqi?city=Dashboard";
+    if (lat && lon) url = `http://localhost:5001/api/aqi?lat=${lat}&lon=${lon}`;
+    
+    let res = await fetch(url);
+    if(!res.ok) return;
+    let data = await res.json();
+    let aqi = data.aqi;
+    
+    setAQIDisplay(aqi);
+
+    document.getElementById("temp").innerText=data.temperature || 24;
+    document.getElementById("humidity").innerText=data.humidity || 60;
+  } catch (e) {
+    console.error("Failed to fetch AQI", e);
+    setAQIDisplay(45);
+    document.getElementById("temp").innerText=28;
+    document.getElementById("humidity").innerText=65;
+  }
+}
+
+function setAQIDisplay(aqi) {
+    document.getElementById("aqiValue").innerText=aqi;
+
+    let status="Good";
+    let color="#34d399";
+    let bg="rgba(52, 211, 153, 0.2)";
+
+    if(aqi > 50 && aqi <= 100) { status="Moderate"; color="#fbbf24"; bg="rgba(251, 191, 36, 0.2)"; }
+    else if(aqi > 100 && aqi <= 200) { status="Unhealthy"; color="#f87171"; bg="rgba(248, 113, 113, 0.2)"; }
+    else if(aqi > 200) { status="Hazardous"; color="#9f1239"; bg="rgba(159, 18, 57, 0.2)"; }
+
+    const statusEl = document.getElementById("status");
+    statusEl.innerText = status;
+    statusEl.style.color = color;
+    statusEl.style.backgroundColor = bg;
+    statusEl.style.borderColor = color;
+}
+
+// Chart Logic with Premium Styling
+let chart;
+async function initChart(lat, lon){
+  try {
+    let res = await fetch("http://localhost:5001/api/history?city=Dashboard");
+    let values = [40, 45, 55, 60, 50, 45, 42, 65, 80, 90, 85, 70]; // fallback
+    let labels = ["12 AM", "2 AM", "4 AM", "6 AM", "8 AM", "10 AM", "12 PM", "2 PM", "4 PM", "6 PM", "8 PM", "10 PM"];
+    
+    if(res.ok) {
+        let data = await res.json();
+        if(data && data.length) {
+            labels = data.map((_, i) => i + 1);
+            values = data.map(d => d.aqi);
+        }
+    }
+
+    if(chart) { chart.destroy(); }
+
+    const ctx = document.getElementById("chart").getContext('2d');
+    
+    let gradient = ctx.createLinearGradient(0, 0, 0, 350);
+    gradient.addColorStop(0, 'rgba(56, 189, 248, 0.5)');
+    gradient.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+
+    chart=new Chart(ctx,{
+      type:"line",
+      data:{
+        labels: labels, 
+        datasets:[{
+            label: "AQI Trend", 
+            data: values, 
+            borderColor: "#38bdf8", 
+            borderWidth: 3,
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.4, // Smooth curve
+            pointBackgroundColor: "#0f172a",
+            pointBorderColor: "#38bdf8",
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                titleFont: { family: 'Outfit', size: 13 },
+                bodyFont: { family: 'Outfit', size: 14, weight: 'bold' },
+                padding: 12,
+                cornerRadius: 8,
+                displayColors: false
+            }
+        },
+        scales: {
+            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', font: {family: 'Outfit'} } },
+            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', font: {family: 'Outfit'} } }
+        }
+      }
+    });
+  } catch (e) {
+    console.error("Failed to fetch chart data", e);
+  }
+}
+
+function refresh(){
+  navigator.geolocation.getCurrentPosition(pos => {
+    updateAQI(pos.coords.latitude, pos.coords.longitude);
+    initChart(pos.coords.latitude, pos.coords.longitude);
+  }, () => {
+    updateAQI(null, null);
+    initChart(null, null);
+  });
+}
+
+// Socket.io Real-Time Connection
+try {
+  const socket = io("http://localhost:5001");
+  
+  socket.on("connect", () => {
+    console.log("Connected to Real-Time AQI Stream");
+  });
+
+  socket.on("aqi_update", (data) => {
+    if(document.getElementById("auto").checked) {
+       setAQIDisplay(data.aqi);
+       document.getElementById("temp").innerText = data.temperature;
+       document.getElementById("humidity").innerText = data.humidity;
+       console.log("Live update received:", data.aqi);
+    }
+  });
+} catch(e) {
+  console.log("Socket.io client not available, sticking to manual updates.");
+}
+
+// Fallback interval just in case Socket fails (running every 10s instead of 5s)
+setInterval(()=>{
+  if(document.getElementById("auto").checked && typeof io === 'undefined') refresh();
+}, 10000);
+
+// Slider simulation
+let slider = document.getElementById("slider");
+if(slider){
+  slider.oninput=function(){
+    setAQIDisplay(this.value);
+  };
+}
+
+// Start
+loadDashboard();
+
+</script>
+
+</body>
+</html>

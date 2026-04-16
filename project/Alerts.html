@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart AQI Alerts</title>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI';}
+
+body{
+  background:linear-gradient(135deg,#020617,#0f172a);
+  color:white;
+  padding:20px;
+}
+
+/* HEADER */
+.header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
+
+button{
+  padding:8px 12px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  background:#38bdf8;
+  transition:0.3s;
+}
+button:hover{transform:scale(1.05);}
+
+/* CONTROLS */
+.controls{margin-bottom:15px;}
+.controls button{margin-right:10px;}
+
+/* GRID */
+.container{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:15px;
+}
+
+/* ALERT CARD */
+.alert{
+  padding:20px;
+  border-radius:15px;
+  backdrop-filter:blur(10px);
+  background:rgba(255,255,255,0.05);
+  animation:fadeIn 0.5s ease;
+  position:relative;
+  overflow:hidden;
+}
+
+.alert::before{
+  content:"";
+  position:absolute;
+  width:100%;
+  height:100%;
+  top:0;left:0;
+  opacity:0.2;
+}
+
+.good::before{background:green;}
+.moderate::before{background:orange;}
+.hazard::before{background:red;animation:pulse 1s infinite;}
+
+@keyframes pulse{
+  0%{opacity:0.2;}
+  50%{opacity:0.5;}
+  100%{opacity:0.2;}
+}
+
+@keyframes fadeIn{
+  from{opacity:0;transform:translateY(10px);}
+  to{opacity:1;}
+}
+
+/* PROGRESS BAR */
+.bar{
+  height:8px;
+  border-radius:10px;
+  margin-top:10px;
+}
+.good .bar{background:green;}
+.moderate .bar{background:orange;}
+.hazard .bar{background:red;}
+
+.time{font-size:12px;opacity:0.7;margin-top:5px;}
+
+/* POPUP */
+.popup{
+  position:fixed;
+  top:20px;
+  right:20px;
+  background:#38bdf8;
+  color:black;
+  padding:10px 15px;
+  border-radius:10px;
+  display:none;
+}
+
+/* CHATBOT */
+#chatbot{
+  position:fixed;
+  bottom:20px;
+  left:20px;
+  background:#38bdf8;
+  color:black;
+  padding:12px 15px;
+  border-radius:12px;
+  font-size:14px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <h2>🚨 Smart AQI Alerts</h2>
+  <button onclick="goBack()">⬅ Dashboard</button>
+</div>
+
+<!-- CONTROLS -->
+<div class="controls">
+  <button onclick="filterAlerts('all')">All</button>
+  <button onclick="filterAlerts('moderate')">Moderate</button>
+  <button onclick="filterAlerts('hazard')">Critical</button>
+  <button onclick="clearAlerts()">Clear</button>
+  <button onclick="toggleMute()" id="muteBtn">🔊 Sound ON</button>
+</div>
+
+<!-- ALERTS -->
+<div class="container" id="alertContainer"></div>
+
+<!-- POPUP -->
+<div class="popup" id="popup">New Alert!</div>
+
+<!-- CHATBOT -->
+<div id="chatbot">
+  🤖 AQI Assistant: <span id="botText">Monitoring air quality...</span>
+</div>
+
+<script>
+
+let alerts=[];
+let muted=false;
+let currentFilter="all";
+
+// SOUND
+let alarmSound=new Audio("https://www.soundjay.com/button/beep-10.wav");
+alarmSound.loop=true;
+
+// VOICE
+function speak(text){
+  let speech=new SpeechSynthesisUtterance(text);
+  speech.rate=1;
+  speech.pitch=1;
+  window.speechSynthesis.speak(speech);
+}
+
+function updateBot(msg){
+  document.getElementById("botText").innerText=msg;
+  if(!muted) speak(msg);
+}
+
+// FETCH ALERTS
+async function fetchAlerts(){
+  try {
+    let res = await fetch("http://localhost:5001/api/alerts");
+    if(!res.ok) return;
+    let data = await res.json();
+    alerts = data.map(a => ({
+      aqi: a.aqi,
+      type: a.type,
+      msg: a.message,
+      time: new Date(a.timestamp).toLocaleTimeString()
+    }));
+    
+    renderAlerts(currentFilter);
+    if(alerts.length > 0) {
+      let latest = alerts[0];
+      updateBot("AQI is "+latest.aqi+". "+latest.msg);
+    }
+  } catch (e) {
+    console.error("Failed to fetch alerts", e);
+  }
+}
+
+let currentAlertAqi = 60; // Starting AQI
+
+// GENERATE ALERT TO DB
+async function generateAlert(){
+  // Drift by -15 to +20 to make it realistic
+  let drift = Math.floor(Math.random() * 36) - 15;
+  currentAlertAqi += drift;
+  if (currentAlertAqi < 10) currentAlertAqi = 10;
+  if (currentAlertAqi > 300) currentAlertAqi = 300;
+  
+  let aqi = currentAlertAqi;
+
+  let type="good";
+  let msg="Air quality is safe";
+
+  if(aqi>=100){
+    type="moderate";
+    msg="Air quality is moderate. Wear a mask.";
+  }
+  if(aqi>=200){
+    type="hazard";
+    msg="Dangerous air quality! Stay indoors!";
+    if(!muted) alarmSound.play();
+    showPopup();
+  }
+
+  try {
+     await fetch("http://localhost:5001/api/alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aqi, type, message: msg })
+     });
+     fetchAlerts();
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+// RENDER
+function renderAlerts(filter){
+  currentFilter=filter;
+  let container=document.getElementById("alertContainer");
+  container.innerHTML="";
+
+  let filtered=alerts.filter(a=>filter==="all"||a.type===filter);
+
+  filtered.forEach(a=>{
+    container.innerHTML+=`
+      <div class="alert ${a.type}">
+        <h3>AQI: ${a.aqi}</h3>
+        <p>${a.msg}</p>
+        <div class="bar" style="width:${a.aqi/3}%"></div>
+        <div class="time">${a.time}</div>
+      </div>
+    `;
+  });
+}
+
+// FILTER
+function filterAlerts(type){
+  renderAlerts(type);
+}
+
+// CLEAR
+function clearAlerts(){
+  alerts=[];
+  renderAlerts("all");
+  alarmSound.pause();
+}
+
+// MUTE
+function toggleMute(){
+  muted=!muted;
+  let btn=document.getElementById("muteBtn");
+
+  if(muted){
+    alarmSound.pause();
+    btn.innerText="🔇 Sound OFF";
+  }else{
+    btn.innerText="🔊 Sound ON";
+  }
+}
+
+// POPUP
+function showPopup(){
+  let pop=document.getElementById("popup");
+  pop.style.display="block";
+  setTimeout(()=>pop.style.display="none",2000);
+}
+
+// BACK
+function goBack(){
+  window.location.href="dashboard.html"; // change if needed
+}
+
+// INIT
+fetchAlerts();
+// AUTO ALERT
+setInterval(generateAlert, 10000);
+
+</script>
+
+</body>
+</html>
